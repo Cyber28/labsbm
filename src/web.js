@@ -58,7 +58,7 @@ module.exports.start = async (env, db) => {
             },
             { upsert: true }
         )
-        rep.redirect(`https://accounts.spotify.com/authorize?response_type=code&client_id=${env.SPOTIFY_ID}&scope=user-modify-playback-state&redirect_uri=${encodeURIComponent(env.SPOTIFY_REDIRECT)}`)
+        rep.redirect(`https://accounts.spotify.com/authorize?response_type=code&client_id=${env.SPOTIFY_ID}&scope=user-modify-playback-state%20user-read-playback-state&redirect_uri=${encodeURIComponent(env.SPOTIFY_REDIRECT)}`)
     })
 
     server.get('/spcb', async (req, rep) => {
