@@ -1,5 +1,5 @@
 const { Client } = require('nakamura')
-const { Logger, refreshDiscord, refreshSpotify, isActive } = require('./utils')
+const { Logger, refreshDiscord, refreshSpotify, isActive, skip } = require('./utils')
 const logger = new Logger('bot')
 const axios = require('axios')
 const qs = require('querystring')
@@ -24,42 +24,16 @@ module.exports.start = async (env, db) => {
         }
 
         if (message.content.toLowerCase() === 'la!skip') {
-            const data = await db.collection('data').findOne({
-                id: message.author.id
-            })
-            if (data.spotifyTokens.expires_in < Date.now()) {
-                const tks = await refreshSpotify(env, data.spotifyTokens.refresh_token)
-                const tokens = Object.assign(tks.data, { refresh_token: data.spotifyTokens.refresh_token })
-                data.spotifyTokens = tokens // <- changed cached data too
-                db.collection('data').findOneAndUpdate(
-                    { id: message.author.id },
-                    {
-                        $set: {
-                            spotifyTokens: tokens
-                        }
-                    }
-                )
+            if (parties[message.author.id]) {
+                return skip(env, db, message.author.id, client, message)
             }
-            const res = await axios({
-                method: 'post',
-                url: 'https://api.spotify.com/v1/me/player/next',
-                headers: {
-                    'Authorization': `Bearer ${data.spotifyTokens.access_token}`
-                }
-            }).catch(r => console.log(r.response.data.error))
-            // how about ya handle this error properly?
-            switch (res.status) {
-                case 204:
-                    client.createMessage(message.channel_id, `⏩ Skipped`)
-                    break;
+            // this is not too efficient. too bad!
+            for (const [key, value] of Object.entries(parties)) {
+                if (value.has(message.author.id))
+                    return skip(env, db, key, client, message)
+            }
 
-                case 403:
-                case 404:
-                default:
-                    logger.log(res.data)
-                    client.createMessage(message.channel_id, 'Something went wrong. This error has been reported')
-            }
-            return
+            return client.createMessage(message.channel_id, '❌ You are not in a Listening Party!')
         }
 
         if (message.content.toLowerCase() === 'la!connect') {
@@ -118,7 +92,7 @@ module.exports.start = async (env, db) => {
                 return client.createMessage(message.channel_id, '❌ I need to be connected to your Listening Party. Run `la!connect`')
             if (!parties[message.author.id].has(message.mentions[0].id))
                 return client.createMessage(message.channel_id, `❌ ${message.mentions[0].username} is not even allowed to skip songs in your Listening Party`)
-            parties[message.author.id].remove(message.mentions[0].id)
+            parties[message.author.id].delete(message.mentions[0].id)
             return client.createMessage(message.channel_id, `✅ ${message.mentions[0].username} is no longer allowed to skip songs in your Listening Party!`)
         }
     })

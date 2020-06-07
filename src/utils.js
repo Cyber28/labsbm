@@ -50,3 +50,43 @@ module.exports.isActive = (env, token) => new Promise(async (res, rej) => {
     })
     res(d.data.is_playing && !d.data.device.is_restricted)
 })
+
+// this is disgusting wtf
+module.exports.skip = async (env, db, id, client, message) => {
+    const data = await db.collection('data').findOne({
+        id: id
+    })
+    if (data.spotifyTokens.expires_in < Date.now()) {
+        const tks = await this.refreshSpotify(env, data.spotifyTokens.refresh_token)
+        const tokens = Object.assign(tks.data, { refresh_token: data.spotifyTokens.refresh_token })
+        data.spotifyTokens = tokens // <- changed cached data too
+        db.collection('data').findOneAndUpdate(
+            { id: id },
+            {
+                $set: {
+                    spotifyTokens: tokens
+                }
+            }
+        )
+    }
+    const res = await axios({
+        method: 'post',
+        url: 'https://api.spotify.com/v1/me/player/next',
+        headers: {
+            'Authorization': `Bearer ${data.spotifyTokens.access_token}`
+        }
+    }).catch(r => console.log(r.response.data.error))
+    // how about ya handle this error properly?
+    switch (res.status) {
+        case 204:
+            client.createMessage(message.channel_id, `⏩ Skipped`)
+            break;
+
+        case 403:
+        case 404:
+        default:
+            logger.log(res.data)
+            client.createMessage(message.channel_id, 'Something went wrong. This error has been reported')
+    }
+    return
+}
